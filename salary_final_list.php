@@ -1,5 +1,6 @@
 <?php
-$page = "payroll";
+$page = "employee";
+$tab = "employee_salary";
 $sub = "salary_final";
 $sub1 = "";
 include("file_parts/header.php");
@@ -14,11 +15,8 @@ $resFet = $db->selectQuery("SELECT CONCAT(employee_firstname,' ',employee_middle
 $thisMonth = date("m");
 $thisYear = date("Y");
 $lastMonth1 = date('Y-m-d', strtotime('first day of last month'));
-$check_last_month = date('m', strtotime('first day of last month'));
-$check_last_year = date('Y', strtotime('first day of last month'));
-$lastMonth = date('m', strtotime(date($lastMonth1) . " -1 month"));
-$checkYear = date('Y', strtotime(date($lastMonth1) . " -1 month"));
-$select_comp_bank_data = $db->selectQuery("SELECT sm_company_bank_details.company_account_no,sm_bank_details.bank_code,sm_company_bank_details.company_iban_no FROM sm_company_bank_details INNER JOIN sm_bank_details ON sm_company_bank_details.bank_id=sm_bank_details.bank_id LEFT JOIN sm_company ON sm_company.company_id=sm_company_bank_details.company_id WHERE sm_company.company_id='$company_id'");
+$lastMonth = date('m', strtotime(date($lastMonth) . " -1 month"));
+$select_comp_bank_data = $db->selectQuery("SELECT sm_company_bank_details.company_account_no,sm_company_bank_details.company_iban_no,sm_bank_details.bank_code FROM sm_company_bank_details INNER JOIN sm_bank_details ON sm_company_bank_details.bank_id=sm_bank_details.bank_id LEFT JOIN sm_company ON sm_company.company_id=sm_company_bank_details.bank_id WHERE sm_company.company_id='$company_id'");
 if (count($select_comp_bank_data)) {
     $company_account_no = $select_comp_bank_data[0]['company_account_no'];
     $bank_code_com = $select_comp_bank_data[0]['bank_code'];
@@ -125,7 +123,7 @@ if (count($select_cr)) {
                                             <td id="file_creation_time"><?php echo date("hi"); ?></td>
                                             <td id="payer_eid"><?php echo $payer_eid; ?></td>
                                             <td></td>
-                                            <td id="payer_bank"><?php $bank_code_com; ?></td>
+                                            <td id="payer_bank"><?php echo $bank_code_com; ?></td>
                                             <td><?php echo $company_iban_no; ?></td>
                                             <td><?php echo date("Ym"); ?></td>
                                             <td id="total_salary"></td>
@@ -160,25 +158,42 @@ if (count($select_cr)) {
                                         <?php
                                         $cl = "";
                                         if (count($resFet)) {
-                                            $qatar_id = $visa_id = "";
+                                            $qatar_id = "";
                                             for ($rC = 0; $rC < count($resFet); $rC++) {
                                                 $emp_id = $resFet[$rC]['employee_id'];
-                                                $qatar_id = $employee_name = $visa_id = "";
-                                                $deduct_amount = $extra_hours = $total_extra_working_income = 0;
-                                                $deduction_amount = $basic_salary = $total_working_days = $net_salary = 0;
-                                                $emp_id = $resFet[$rC]['employee_id'];
-                                                $employee_name = $resFet[$rC]['employee_name'];
-                                                $select_sif_extra_fields = $db->selectQuery("SELECT `normal_overtime`,`employee_visa`,`employee_qid`,`holiday_overtime`,`extra_income`,`extra_hours` FROM `sm_employee_working_hours_total` WHERE `employee_id`='$emp_id' AND `month`='$lastMonth' AND `year`='$checkYear'");
-                                                if (count($select_sif_extra_fields)) {
-                                                    $qatar_id = $select_sif_extra_fields[0]['employee_qid'];
-                                                    $visa_id = $select_sif_extra_fields[0]['employee_visa'];
-                                                    $extra_hours = $select_sif_extra_fields[0]['extra_hours'];
-                                                    $total_extra_working_income = $select_sif_extra_fields[0]['extra_income'];
+                                                $qatar = $db->selectQuery("SELECT `document_data` FROM `sm_employee_documents` WHERE `document_title`='Qatar ID' AND `status`='1' AND `employee_id`='$emp_id'");
+                                                if (count($qatar)) {
+                                                    $qatar_id = $qatar[0]['document_data'];
+                                                } else {
+                                                    $qatar_id = "";
                                                 }
-                                                $thisMo_sif_extra_fields = $db->selectQuery("SELECT `total_working_days` FROM `sm_employee_working_hours_total` WHERE `employee_id`='$emp_id' AND `month`='$check_last_month' AND `year`='$check_last_year'");
-                                                if (count($thisMo_sif_extra_fields)) {
-                                                    $total_working_days = $thisMo_sif_extra_fields[0]['total_working_days'];
-                                                    $basic_salary = $thisMo_sif_extra_fields[0]['employee_salary'];
+                                                $emp_salary = $resFet[$rC]['employee_salary'];
+                                                $basic_salary = preg_replace("/[^0-9]/", "", $emp_salary);
+                                                if ($basic_salary == "") {
+                                                    $basic_salary = 0;
+                                                }
+                                                $total_extra_working_income = $net_salary = $extra_hours = $extra_income = $normal_over_time = $holiday_over_time = $total_holiday_over_time = $total_normal_over_time = $total_normal_income = $holiday_extra = $total_holiday_income = 0;
+                                                $times = $db->selectQuery("SELECT * FROM `sm_time_sheet` WHERE `employee_id`='$emp_id' AND MONTH(date)='$lastMonth'");
+                                                if (count($times) > 0) {
+                                                    for ($t = 0; $t < count($times); $t++) {
+                                                        $normal_over_time = $times[$t]['normal_over_time'];
+                                                        $holiday_over_time = $times[$t]['holiday_over_time'];
+                                                        $total_normal_over_time = $total_normal_over_time + $normal_over_time;
+                                                        $total_holiday_over_time = $total_holiday_over_time + $holiday_over_time;
+                                                        $extra_hours = $extra_hours + $normal_over_time + $holiday_over_time;
+                                                        if ($extra_hours > 85) {
+                                                            $extra_hours = 85;
+                                                        }
+                                                    }
+                                                }
+                                                if ($basic_salary != 0) {
+                                                    $per_day = $basic_salary / 30;
+                                                    $per_hour = $per_day / 8;
+                                                    $normal_extra = $per_hour * (1.25 / 100);
+                                                    $total_normal_income = ($per_hour + $normal_extra) * $total_normal_over_time;
+                                                    $holiday_extra = $per_hour * (1.5 / 100);
+                                                    $total_holiday_income = ($per_hour + $holiday_extra) * $total_holiday_over_time;
+                                                    $total_extra_working_income = $total_normal_income + $total_holiday_income;
                                                 }
                                                 $deduction_amount = $display_deduction = $deduct_this_month_amount = 0;
                                                 $deductions = $db->selectQuery("SELECT `deduction_amount` FROM `sm_salary_deduction` WHERE `employee_id`='$emp_id' AND MONTH(deduction_date)='$thisMonth'");
@@ -234,12 +249,17 @@ if (count($select_cr)) {
                                                 } else {
                                                     $total_working_days = $working_days - $leave_days;
                                                 }
-                                                $select_basics = $db->selectQuery("SELECT * FROM `sm_sif_basic` WHERE `employee_id`='$emp_id' AND MONTH(sif_date)='$check_last_month'  AND YEAR(sif_date)='$check_last_year'");
+                                                $select_basics = $db->selectQuery("SELECT * FROM `sm_sif_basic` WHERE `employee_id`='$emp_id' AND MONTH(sif_date)='$thisMonth'");
                                                 if (count($select_basics)) {
                                                     $payment_type = $select_basics[0]['sif_payment_type'];
                                                     $notes_comments = $select_basics[0]['sif_notes_comments'];
                                                 }
-
+                                                $select_visa = $db->selectQuery("SELECT `document_data` FROM `sm_employee_documents` WHERE `employee_id`='$emp_id' AND `document_title`='Visa'");
+                                                if (count($select_visa)) {
+                                                    $visa_id = $select_visa[0]['document_data'];
+                                                } else {
+                                                    $visa_id = "";
+                                                }
                                                 $select_bank_data = $db->selectQuery("SELECT sm_employee_bank_details.employee_account_no,sm_bank_details.bank_code FROM sm_employee_bank_details INNER JOIN sm_bank_details ON sm_employee_bank_details.bank_id=sm_bank_details.bank_id  WHERE sm_employee_bank_details.employee_id='$emp_id'");
                                                 if (count($select_bank_data)) {
                                                     $employee_account_no = $select_bank_data[0]['employee_account_no'];
@@ -253,7 +273,7 @@ if (count($select_cr)) {
                                                     <td><?php echo $fc = $rC + 1; ?></td>
                                                     <td><?php echo $qatar_id; ?></td>
                                                     <td><?php echo $visa_id; ?></td>
-                                                    <td><?php echo $employee_name; ?></td>
+                                                    <td><?php echo htmlspecialchars_decode($resFet[$rC]['employee_name']); ?></td>
                                                     <td><?php echo $bank_code; ?></td>
                                                     <td><?php echo $employee_account_no; ?></td>
                                                     <td>M</td>
@@ -344,7 +364,7 @@ if (count($select_cr)) {
             "aoColumnDefs": [
                 {'bSortable': true, 'aTargets': ["no-sort"]}
             ],
-            "aLengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
+            "aLengthMenu": [[-1], ["All"]],
             "footerCallback": function (row, data, start, end, display) {
                 var api = this.api(), data;
                 var intVal = function (i) {
