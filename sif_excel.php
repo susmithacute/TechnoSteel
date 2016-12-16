@@ -16,6 +16,7 @@ if (isset($_POST["cid"])) {
     }
     $select_cr = $db->selectQuery("SELECT `doc_data` FROM `sm_company_docs` WHERE `doc_title`='Commercial Registration' AND `company_id`='$company_id' AND `doc_status`='1' ");
     if (count($select_cr)) {
+        $payer_eid = "";
         $company_cr = $select_cr[0]['doc_data'];
         $payer_eid = str_pad($company_cr, 8, "0", STR_PAD_LEFT);
     }
@@ -27,6 +28,8 @@ if (isset($_POST['salary']) && isset($_POST['records'])) {
     $salary = $_POST['salary'];
     $records = $_POST['records'];
 }
+//$time_now = date("hi");
+$time_now = str_pad(date("hi"), 4, "0", STR_PAD_LEFT);
 // Add some data
 $objPHPExcel->setActiveSheetIndex(0);
 $objPHPExcel->getActiveSheet()->SetCellValue('A1', 'Employer EID');
@@ -40,9 +43,12 @@ $objPHPExcel->getActiveSheet()->SetCellValue('H1', 'Salary Year and Month');
 $objPHPExcel->getActiveSheet()->SetCellValue('I1', 'Total Salaries');
 $objPHPExcel->getActiveSheet()->SetCellValue('J1', 'Total Records');
 $objPHPExcel->getActiveSheet()->SetCellValue('A2', $payer_eid);
+$objPHPExcel->getActiveSheet()->getStyle('A2')->getNumberFormat()->setFormatCode('00000000');
 $objPHPExcel->getActiveSheet()->SetCellValue('B2', date("Ymd"));
-$objPHPExcel->getActiveSheet()->SetCellValue('C2', date("hi"));
+$objPHPExcel->getActiveSheet()->SetCellValue('C2', $time_now);
+$objPHPExcel->getActiveSheet()->getStyle('C2')->getNumberFormat()->setFormatCode('0000');
 $objPHPExcel->getActiveSheet()->SetCellValue('D2', $payer_eid);
+$objPHPExcel->getActiveSheet()->getStyle('D2')->getNumberFormat()->setFormatCode('00000000');
 $objPHPExcel->getActiveSheet()->SetCellValue('E2', '');
 $objPHPExcel->getActiveSheet()->SetCellValue('F2', $bank_code_com);
 $objPHPExcel->getActiveSheet()->SetCellValue('G2', $company_iban_no);
@@ -68,33 +74,47 @@ $cl = $employee_name = $bank_code = "";
 $thisMonth = date("m");
 $thisYear = date("Y");
 $lastMonth1 = date('Y-m-d', strtotime('first day of last month'));
-$check_last_month = date('m', strtotime('first day of last month'));
-$check_last_year = date('Y', strtotime('first day of last month'));
-$lastMonth = date('m', strtotime(date($lastMonth1) . " -1 month"));
-$checkYear = date('Y', strtotime(date($lastMonth1) . " -1 month"));
+$lastMonth = date('m', strtotime(date($lastMonth) . " -1 month"));
 if (count($resFet)) {
     $qatar_id = $visa_id = $employee_account_no = "";
     $total_working_days = $net_salary = $basic_salary = $extra_hours = 0;
     $rowCount = 4;
     for ($rC = 0; $rC < count($resFet); $rC++) {
-        $qatar_id = $visa_id = $employee_account_no = "";
         $employee_name = $resFet[$rC]['employee_name'];
         $emp_id = $resFet[$rC]['employee_id'];
-        $deduct_amount = $extra_hours = $total_extra_working_income = 0;
-        $deduction_amount = $basic_salary = $total_working_days = $net_salary = 0;
-        $emp_id = $resFet[$rC]['employee_id'];
-        $employee_name = $resFet[$rC]['employee_name'];
-        $select_sif_extra_fields = $db->selectQuery("SELECT `normal_overtime`,`employee_visa`,`employee_qid`,`holiday_overtime`,`extra_income`,`extra_hours` FROM `sm_employee_working_hours_total` WHERE `employee_id`='$emp_id' AND `month`='$lastMonth' AND `year`='$checkYear'");
-        if (count($select_sif_extra_fields)) {
-            $qatar_id = $select_sif_extra_fields[0]['employee_qid'];
-            $visa_id = $select_sif_extra_fields[0]['employee_visa'];
-            $extra_hours = $select_sif_extra_fields[0]['extra_hours'];
-            $total_extra_working_income = $select_sif_extra_fields[0]['extra_income'];
+        $qatar = $db->selectQuery("SELECT `document_data` FROM `sm_employee_documents` WHERE `document_title`='Qatar ID' AND `status`='1' AND `employee_id`='$emp_id'");
+        if (count($qatar)) {
+            $qatar_id = $qatar[0]['document_data'];
+        } else {
+            $qatar_id = "";
         }
-        $thisMo_sif_extra_fields = $db->selectQuery("SELECT `total_working_days` FROM `sm_employee_working_hours_total` WHERE `employee_id`='$emp_id' AND `month`='$check_last_month' AND `year`='$check_last_year'");
-        if (count($thisMo_sif_extra_fields)) {
-            $total_working_days = $thisMo_sif_extra_fields[0]['total_working_days'];
-            $basic_salary = $thisMo_sif_extra_fields[0]['employee_salary'];
+        $emp_salary = $resFet[$rC]['employee_salary'];
+        $basic_salary = preg_replace("/[^0-9]/", "", $emp_salary);
+        if ($basic_salary == "") {
+            $basic_salary = 0;
+        }
+        $total_extra_working_income = $net_salary = $extra_hours = $extra_income = $normal_over_time = $holiday_over_time = $total_holiday_over_time = $total_normal_over_time = $total_normal_income = $holiday_extra = $total_holiday_income = 0;
+        $times = $db->selectQuery("SELECT * FROM `sm_time_sheet` WHERE `employee_id`='$emp_id' AND MONTH(date)='$lastMonth'");
+        if (count($times) > 0) {
+            for ($t = 0; $t < count($times); $t++) {
+                $normal_over_time = $times[$t]['normal_over_time'];
+                $holiday_over_time = $times[$t]['holiday_over_time'];
+                $total_normal_over_time = $total_normal_over_time + $normal_over_time;
+                $total_holiday_over_time = $total_holiday_over_time + $holiday_over_time;
+                $extra_hours = $extra_hours + $normal_over_time + $holiday_over_time;
+                if ($extra_hours > 85) {
+                    $extra_hours = 85;
+                }
+            }
+        }
+        if ($basic_salary != 0) {
+            $per_day = $basic_salary / 30;
+            $per_hour = $per_day / 8;
+            $normal_extra = $per_hour * (1.25 / 100);
+            $total_normal_income = ($per_hour + $normal_extra) * $total_normal_over_time;
+            $holiday_extra = $per_hour * (1.5 / 100);
+            $total_holiday_income = ($per_hour + $holiday_extra) * $total_holiday_over_time;
+            $total_extra_working_income = $total_normal_income + $total_holiday_income;
         }
         $deduction_amount = $display_deduction = $deduct_this_month_amount = 0;
         $deductions = $db->selectQuery("SELECT `deduction_amount` FROM `sm_salary_deduction` WHERE `employee_id`='$emp_id' AND MONTH(deduction_date)='$thisMonth'");
@@ -150,10 +170,15 @@ if (count($resFet)) {
         } else {
             $total_working_days = $working_days - $leave_days;
         }
-        $select_basics = $db->selectQuery("SELECT * FROM `sm_sif_basic` WHERE `employee_id`='$emp_id' AND MONTH(sif_date)='$check_last_month' AND YEAR(sif_date)='$check_last_year'");
+        $select_basics = $db->selectQuery("SELECT * FROM `sm_sif_basic` WHERE `employee_id`='$emp_id' AND MONTH(sif_date)='$thisMonth'");
         if (count($select_basics)) {
             $payment_type = $select_basics[0]['sif_payment_type'];
             $notes_comments = $select_basics[0]['sif_notes_comments'];
+        }
+        $visa_id = "";
+        $select_visa = $db->selectQuery("SELECT `document_data` FROM `sm_employee_documents` WHERE `employee_id`='$emp_id' AND `document_title`='Visa'");
+        if (count($select_visa)) {
+            $visa_id = $select_visa[0]['document_data'];
         }
         $select_bank_data = $db->selectQuery("SELECT sm_employee_bank_details.employee_account_no,sm_bank_details.bank_code FROM sm_employee_bank_details INNER JOIN sm_bank_details ON sm_employee_bank_details.bank_id=sm_bank_details.bank_id WHERE sm_employee_bank_details.employee_id='$emp_id'");
         if (count($select_bank_data)) {
